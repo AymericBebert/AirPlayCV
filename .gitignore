@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+venv/
+
+# IDE
+.idea/
+.vscode
+
+# Temp files
+*.swp
+*.swo
+.~
+
+# Random crap
+.DS_Store
+.DS_Store?
+._*
