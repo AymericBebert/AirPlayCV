@@ -3,8 +3,12 @@ __pycache__
 *.py[cod]
 *$py.class
 
-# C extensions
+# C or Cython
+*.o
 *.so
+build
+src/cyvisord/*.c
+src/cyvisord/*.html
 
 # Jupyter Notebook
 .ipynb_checkpoints
