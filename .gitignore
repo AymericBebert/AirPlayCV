@@ -15,6 +15,7 @@ src/cyvisord/*.html
 
 # Environments
 venv/
+/venv
 
 # IDE
 .idea/
