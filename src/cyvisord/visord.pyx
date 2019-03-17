@@ -14,7 +14,7 @@ cimport numpy as np
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
-cpdef detect_black_squares(np.ndarray[np.uint8_t, ndim=2] img, np.uint8_t threshold, int block_radius,
+cpdef detect_black_squares(np.uint8_t[:, :] img, np.uint8_t threshold, int block_radius,
                            int min_i=0, int max_i=100000, int min_j=0, int max_j=100000):
     """Return all the zones where surroundings is a black square"""
     cdef int i, j, di, dj
@@ -53,7 +53,7 @@ cpdef detect_black_squares(np.ndarray[np.uint8_t, ndim=2] img, np.uint8_t thresh
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
-cpdef void draw_square_center(np.ndarray[np.uint8_t, ndim=2] img, int x, int y, int radius, int thickness):
+cpdef void draw_square_center(np.uint8_t[:, :] img, int x, int y, int radius, int thickness):
     """Draw the square defined by center in (x, y) and radius. Thickness can be chosen"""
     cdef Py_ssize_t i, j, k
     for i in range(y-radius, y+radius+1):
@@ -69,7 +69,7 @@ cpdef void draw_square_center(np.ndarray[np.uint8_t, ndim=2] img, int x, int y, 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
 @cython.cdivision(True)     # unsafe division
-cpdef bint is_dark_enough(np.ndarray[np.uint8_t, ndim=2] img, int x, int y, int radius, int threshold):
+cpdef bint is_dark_enough(np.uint8_t[:, :] img, int x, int y, int radius, int threshold):
     """Returns True is, in average, the square id darker then the threshold"""
     cdef Py_ssize_t i, j, k
     cdef int s
@@ -81,7 +81,7 @@ cpdef bint is_dark_enough(np.ndarray[np.uint8_t, ndim=2] img, int x, int y, int 
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
-cdef void mark_black_squares(np.ndarray[np.uint8_t, ndim=2] img, np.uint8_t threshold, int block_radius):
+cdef void mark_black_squares(np.uint8_t[:, :] img, np.uint8_t threshold, int block_radius):
     """Mark all the black squares in the bottom part of the image with a white X"""
     cdef Py_ssize_t i, j, di, dj, dx
     cdef bint passed
@@ -104,7 +104,7 @@ cdef void mark_black_squares(np.ndarray[np.uint8_t, ndim=2] img, np.uint8_t thre
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
-cdef void draw_square(np.ndarray[np.uint8_t, ndim=2] img, int x_min, int x_max, int y_min, int y_max, int thickness):
+cdef void draw_square(np.uint8_t[:, :] img, int x_min, int x_max, int y_min, int y_max, int thickness):
     """Draw the square defined by x in [x_min, x_max[ and y in [y_min, y_max[. Thickness can be chosen"""
     cdef Py_ssize_t i, j, k
     for i in range(y_min, y_max):
@@ -119,7 +119,7 @@ cdef void draw_square(np.ndarray[np.uint8_t, ndim=2] img, int x_min, int x_max, 
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
-cpdef bint contains_black_squares(np.ndarray[np.uint8_t, ndim=2] img,
+cpdef bint contains_black_squares(np.uint8_t[:, :] img,
                                   int x_min, int x_max, int y_min, int y_max,
                                   np.uint8_t threshold, int block_radius):
     """Return True if the specified zone contains at least a square of radius block_radius. Draw the boundaries"""

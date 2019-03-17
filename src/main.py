@@ -29,7 +29,7 @@ def detect_zones(img):
         return []
 
     # Use clustering algorithm to gather black squares that are in the same zone
-    bw = min(8., estimate_bandwidth(zone_centers))
+    bw = max(1., min(8., estimate_bandwidth(zone_centers)))
     print(f"Zones bandwidth: {bw}")
     ms = MeanShift(bandwidth=bw)
     ms.fit(zone_centers)
