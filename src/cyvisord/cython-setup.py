@@ -18,3 +18,6 @@ setup(ext_modules=cythonize('src/cyvisord/visord.pyx',
       include_dirs=[numpy.get_include()])
 
 # annotate=True enables generation of the html annotation file
+
+if __name__ == "__main__":
+    pass
