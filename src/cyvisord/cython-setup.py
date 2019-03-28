@@ -4,7 +4,7 @@
 Script to build the Cython code
 
 To build, go to the project root folder and run:
-./src/cyvisord/cython-setup.py build_ext --inplace
+./src/cyvisord/cython-setup.py build_ext --build-lib src/cyvisord
 """
 
 from distutils.core import setup

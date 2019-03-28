@@ -18,7 +18,7 @@ This project uses some Cython code that needs to be built.
 In your terminal, go to the project root folder and run:
 
 ```sh
-./src/cyvisord/cython-setup.py build_ext --inplace
+./src/cyvisord/cython-setup.py build_ext --build-lib src/cyvisord
 ```
 
 ## Play
