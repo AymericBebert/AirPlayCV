@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import os
+import sys
+import time
 import logging
 
 import cv2
@@ -8,8 +10,14 @@ import simpleaudio as sa
 import numpy as np
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
-from src.utils import resolve_path
+from src.utils import resolve_path, pretty_duration
 import src.cyvisord.visord as cyvo
+
+
+LOG_FORMAT = "%(asctime)s [%(name)s/%(levelname)s] %(message)s"
+LOG_DATE_FMT = "%H:%M:%S"
+DARK_THRESHOLD = 92
+DEBUG = False
 
 
 def detect_zones(img):
@@ -17,7 +25,7 @@ def detect_zones(img):
 
     # Threshold to adapt to ambient luminosity
     threshold = np.average(img) // 2
-    print(f"Zones threshold: {threshold}")
+    logging.debug(f"Zones threshold: {threshold}")
 
     # Detect the center of black squares (only lower half, centered)
     zones_i, zones_j = cyvo.detect_black_squares(img, threshold, 2,
@@ -30,7 +38,7 @@ def detect_zones(img):
 
     # Use clustering algorithm to gather black squares that are in the same zone
     bw = max(1., min(8., estimate_bandwidth(zone_centers)))
-    print(f"Zones bandwidth: {bw}")
+    logging.debug(f"Zones bandwidth: {bw}")
     ms = MeanShift(bandwidth=bw)
     ms.fit(zone_centers)
 
@@ -39,7 +47,7 @@ def detect_zones(img):
     zone_centers.sort(key=lambda x: x[1])
 
     # Display the zones
-    print(f"Zones centers: {zone_centers}")
+    logging.debug(f"Zones centers: {zone_centers}")
     for zi, zj in zone_centers:
         cyvo.draw_square_center(img, zj, zi, 3, 1)
 
@@ -49,12 +57,18 @@ def detect_zones(img):
 def detect_zones_canny(img):
     """Will detect the best black zones un the image"""
 
-    canny = cv2.Canny(gray, 100, 200)
-    zone_centers = np.argwhere(canny == 255)
+    min_i = img.shape[0] // 2
+    max_i = img.shape[0] * 9 // 10
+    min_j = img.shape[1] // 6
+    max_j = img.shape[1] * 5 // 6
+
+    canny = cv2.Canny(img[min_i:max_i, min_j:max_j], 100, 200)
+    zone_centers = np.argwhere(canny == 255) + np.array([min_i, min_j])
+    # img[min_i:max_i, min_j:max_j] = canny  # TEMP
 
     # Use clustering algorithm to gather black squares that are in the same zone
     bw = max(1., min(50., estimate_bandwidth(zone_centers)))
-    print(f"Zones bandwidth: {bw}")
+    logging.debug(f"Zones bandwidth: {bw}")
     ms = MeanShift(bandwidth=bw)
     ms.fit(zone_centers)
 
@@ -63,15 +77,76 @@ def detect_zones_canny(img):
     zone_centers.sort(key=lambda x: x[1])
 
     # Display the zones
-    print(f"Zones centers: {zone_centers}")
+    logging.debug(f"Zones centers: {zone_centers}")
     for zi, zj in zone_centers:
         cyvo.draw_square_center(img, zj, zi, 3, 1)
 
     return zone_centers
 
 
+def detect_zones_contours(img, img_bgr):
+    """Use contour detection to find interesting zones"""
+    logging.debug("detect_zones_contours start")
+
+    if DEBUG:
+        img_bgr = cv2.flip(img_bgr, 1)
+
+    t0 = time.perf_counter()
+
+    colors = {3: (255, 0, 0), 4: (0, 255, 0), 5: (0, 0, 255), 6: (255, 255, 0), 7: (255, 0, 255), 8: (0, 255, 255)}
+
+    img2 = cv2.GaussianBlur(img, (3, 3), 0)
+    ret_, thresh = cv2.threshold(img2, 192, 255, cv2.THRESH_BINARY)
+
+    contours, h = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    zone_centers = []
+
+    for cnt in contours:
+        # Filter out too small or large zones
+        area = cv2.contourArea(cnt)
+        if area < 64 or area > 1024:
+            continue
+
+        # Compute the center of the contour
+        mom = cv2.moments(cnt)
+        c_x = int(mom["m10"] / mom["m00"])
+        c_y = int(mom["m01"] / mom["m00"])
+        zone_centers.append([c_y, c_x])
+
+        if DEBUG:
+            approx = cv2.approxPolyDP(cnt, 0.04 * cv2.arcLength(cnt, True), True)  # Use this info?
+
+            logging.debug(f"Contour area : {area}")
+            logging.debug(f"Contour sides: {len(approx)}")
+            cv2.circle(img_bgr, (c_x, c_y), 3, (153, 102, 255), -1)
+            cv2.drawContours(img_bgr, [cnt], -1, colors.get(len(approx), (192, 192, 192)), 2)
+
+    if DEBUG:
+        cv2.imshow('frame2', img2)
+        cv2.imshow('frame3', thresh)
+        cv2.imshow('frame4', img_bgr)
+
+    logging.info(f"detect_zones_contours took {pretty_duration(time.perf_counter() - t0)}")
+    return zone_centers
+
+
 if __name__ == "__main__":
-    logging.basicConfig(level='INFO', format='%(asctime)s [%(name)s/%(levelname)s] %(message)s', datefmt='%H:%M:%S')
+    DEBUG = DEBUG or "debug" in sys.argv
+
+    logging.basicConfig(level=("DEBUG" if DEBUG else "INFO"), format=LOG_FORMAT, datefmt=LOG_DATE_FMT)
+    logging.info("Start in DEBUG mode" if DEBUG else "Start")
+
+    # Initialize windows
+    cv2.namedWindow("frame")
+    cv2.moveWindow("frame", 50, 400)
+
+    if DEBUG:
+        cv2.namedWindow("frame2")
+        cv2.moveWindow("frame2", 400, 400)
+        cv2.namedWindow("frame3")
+        cv2.moveWindow("frame3", 750, 400)
+        cv2.namedWindow("frame4")
+        cv2.moveWindow("frame4", 1100, 400)
 
     # Initialize the video capture with small dimensions (easier on computation)
     cap = cv2.VideoCapture(0)
@@ -113,7 +188,12 @@ if __name__ == "__main__":
 
         # Refresh zones if Z is pressed
         if cv2.waitKey(1) & 0xFF == ord('z'):
-            zc = detect_zones_canny(gray)
+            # Detect zones
+            # zc = detect_zones(gray)
+            # zc = detect_zones_canny(gray)
+            zc = detect_zones_contours(gray, frame)
+
+            # Refresh checked zones and sound associated to them
             zones = [(i, j, sound_samples[k % n_ss]) for k, (i, j) in enumerate(zc)]
             n_zones = len(zones)
             found_before = [False] * n_zones
@@ -122,7 +202,7 @@ if __name__ == "__main__":
         # For each zones, check if it is below or above the darkness threshold
         for i in range(n_zones):
             zd = zones[i]
-            if cyvo.is_dark_enough(gray, zd[1], zd[0], 2, 48):
+            if cyvo.is_dark_enough(gray, zd[1], zd[0], 2, DARK_THRESHOLD):
                 found[i] = True
                 cyvo.draw_square_center(gray, zd[1], zd[0], 3, 2)
             else:
@@ -130,7 +210,7 @@ if __name__ == "__main__":
                 cyvo.draw_square_center(gray, zd[1], zd[0], 3, 1)
 
             if not found[i] and found_before[i]:
-                # print(f"Dum!")
+                # logging.debug(f"Dum!")
                 zd[2].play()
 
             found_before[i] = found[i]
