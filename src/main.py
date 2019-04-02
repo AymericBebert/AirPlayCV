@@ -46,6 +46,30 @@ def detect_zones(img):
     return zone_centers
 
 
+def detect_zones_canny(img):
+    """Will detect the best black zones un the image"""
+
+    canny = cv2.Canny(gray, 100, 200)
+    zone_centers = np.argwhere(canny == 255)
+
+    # Use clustering algorithm to gather black squares that are in the same zone
+    bw = max(1., min(50., estimate_bandwidth(zone_centers)))
+    print(f"Zones bandwidth: {bw}")
+    ms = MeanShift(bandwidth=bw)
+    ms.fit(zone_centers)
+
+    # For each cluster, make the zone out of the cluster center
+    zone_centers = [(int(round(cc[0])), int(round(cc[1]))) for cc in ms.cluster_centers_]
+    zone_centers.sort(key=lambda x: x[1])
+
+    # Display the zones
+    print(f"Zones centers: {zone_centers}")
+    for zi, zj in zone_centers:
+        cyvo.draw_square_center(img, zj, zi, 3, 1)
+
+    return zone_centers
+
+
 if __name__ == "__main__":
     logging.basicConfig(level='INFO', format='%(asctime)s [%(name)s/%(levelname)s] %(message)s', datefmt='%H:%M:%S')
 
@@ -89,7 +113,7 @@ if __name__ == "__main__":
 
         # Refresh zones if Z is pressed
         if cv2.waitKey(1) & 0xFF == ord('z'):
-            zc = detect_zones(gray)
+            zc = detect_zones_canny(gray)
             zones = [(i, j, sound_samples[k % n_ss]) for k, (i, j) in enumerate(zc)]
             n_zones = len(zones)
             found_before = [False] * n_zones
