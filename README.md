@@ -31,4 +31,6 @@ You should be able to play with:
 
 You may have to run `export PYTHONPATH=$(pwd)` beforehand for the imports to work.
 
+You can use `./src/main.py debug` for debug mode.
+
 When you are done playing, press `q` while the window in on focus to quit.
