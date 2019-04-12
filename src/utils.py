@@ -18,7 +18,7 @@ def resolve_path(*path: str) -> str:
 
 
 def pretty_duration(t: float) -> str:
-    """Return the file size in a pretty way"""
+    """Return the duration in a pretty way"""
     if t > 1:
         return f"{t:.02f}s"
     t *= 1000

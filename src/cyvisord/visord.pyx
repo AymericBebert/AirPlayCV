@@ -68,6 +68,16 @@ cpdef void draw_square_center(np.uint8_t[:, :] img, int x, int y, int radius, in
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function
 @cython.wraparound(False)   # turn off negative index wrapping for entire function
+cpdef void draw_cross_center(np.uint8_t[:, :] img, int x, int y, int radius):
+    """Draw a cross defined by center in (x, y) and radius"""
+    cdef Py_ssize_t i, j, k
+    for k in range(-radius, radius+1):
+        img[y+k, x+k] = 255
+        img[y+k, x-k] = 255
+
+
+@cython.boundscheck(False)  # turn off bounds-checking for entire function
+@cython.wraparound(False)   # turn off negative index wrapping for entire function
 @cython.cdivision(True)     # unsafe division
 cpdef bint is_dark_enough(np.uint8_t[:, :] img, int x, int y, int radius, int threshold):
     """Returns True is, in average, the square id darker then the threshold"""

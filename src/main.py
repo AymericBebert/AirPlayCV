@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import logging
+from typing import List, Tuple
 
 import cv2
 import simpleaudio as sa
@@ -20,7 +21,7 @@ DARK_THRESHOLD = 92
 DEBUG = False
 
 
-def detect_zones(img):
+def detect_zones(img: np.ndarray) -> List[Tuple[int, int]]:
     """Will detect the best black zones un the image"""
 
     # Threshold to adapt to ambient luminosity
@@ -36,6 +37,12 @@ def detect_zones(img):
     if zone_centers.size == 0:
         return []
 
+    if DEBUG:
+        img2 = img.copy()
+        for i in range(zone_centers.shape[0]):
+            cyvo.draw_cross_center(img2, zone_centers[i, 1], zone_centers[i, 0], 1)
+        cv2.imshow('frame2', img2)
+
     # Use clustering algorithm to gather black squares that are in the same zone
     bw = max(1., min(8., estimate_bandwidth(zone_centers)))
     logging.debug(f"Zones bandwidth: {bw}")
@@ -46,6 +53,12 @@ def detect_zones(img):
     zone_centers = [(int(round(cc[0])), int(round(cc[1]))) for cc in ms.cluster_centers_]
     zone_centers.sort(key=lambda x: x[1])
 
+    if DEBUG:
+        img2 = img.copy()
+        for zc in zone_centers:
+            cyvo.draw_cross_center(img2, zc[1], zc[0], 1)
+        cv2.imshow('frame3', img2)
+
     # Display the zones
     logging.debug(f"Zones centers: {zone_centers}")
     for zi, zj in zone_centers:
@@ -54,7 +67,7 @@ def detect_zones(img):
     return zone_centers
 
 
-def detect_zones_canny(img):
+def detect_zones_canny(img: np.ndarray) -> List[Tuple[int, int]]:
     """Will detect the best black zones un the image"""
 
     min_i = img.shape[0] // 2
@@ -66,8 +79,14 @@ def detect_zones_canny(img):
     zone_centers = np.argwhere(canny == 255) + np.array([min_i, min_j])
     # img[min_i:max_i, min_j:max_j] = canny  # TEMP
 
+    if DEBUG:
+        img2 = img.copy()
+        for i in range(zone_centers.shape[0]):
+            cyvo.draw_cross_center(img2, zone_centers[i, 1], zone_centers[i, 0], 1)
+        cv2.imshow('frame2', img2)
+
     # Use clustering algorithm to gather black squares that are in the same zone
-    bw = max(1., min(50., estimate_bandwidth(zone_centers)))
+    bw = max(1., min(8., estimate_bandwidth(zone_centers)))
     logging.debug(f"Zones bandwidth: {bw}")
     ms = MeanShift(bandwidth=bw)
     ms.fit(zone_centers)
@@ -75,6 +94,12 @@ def detect_zones_canny(img):
     # For each cluster, make the zone out of the cluster center
     zone_centers = [(int(round(cc[0])), int(round(cc[1]))) for cc in ms.cluster_centers_]
     zone_centers.sort(key=lambda x: x[1])
+
+    if DEBUG:
+        img2 = img.copy()
+        for zc in zone_centers:
+            cyvo.draw_cross_center(img2, zc[1], zc[0], 1)
+        cv2.imshow('frame3', img2)
 
     # Display the zones
     logging.debug(f"Zones centers: {zone_centers}")
@@ -84,7 +109,7 @@ def detect_zones_canny(img):
     return zone_centers
 
 
-def detect_zones_contours(img, img_bgr):
+def detect_zones_contours(img: np.ndarray, img_bgr: np.ndarray) -> List[Tuple[int, int]]:
     """Use contour detection to find interesting zones"""
     logging.debug("detect_zones_contours start")
 
@@ -96,7 +121,7 @@ def detect_zones_contours(img, img_bgr):
     colors = {3: (255, 0, 0), 4: (0, 255, 0), 5: (0, 0, 255), 6: (255, 255, 0), 7: (255, 0, 255), 8: (0, 255, 255)}
 
     img2 = cv2.GaussianBlur(img, (3, 3), 0)
-    ret_, thresh = cv2.threshold(img2, 192, 255, cv2.THRESH_BINARY)
+    ret_, thresh = cv2.threshold(img2, 176, 255, cv2.THRESH_BINARY)
 
     contours, h = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     zone_centers = []
@@ -111,7 +136,11 @@ def detect_zones_contours(img, img_bgr):
         mom = cv2.moments(cnt)
         c_x = int(mom["m10"] / mom["m00"])
         c_y = int(mom["m01"] / mom["m00"])
-        zone_centers.append([c_y, c_x])
+
+        if c_y < img.shape[0] // 2:
+            continue
+
+        zone_centers.append((c_y, c_x))
 
         if DEBUG:
             approx = cv2.approxPolyDP(cnt, 0.04 * cv2.arcLength(cnt, True), True)  # Use this info?
@@ -183,18 +212,26 @@ if __name__ == "__main__":
         ret, frame = cap.read()
 
         # Our operations on the frame come here
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.flip(gray, 1)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # TODO read in grayscale
+        # gray = cv2.flip(gray, 1)
+
+        # Key input
+        k = cv2.waitKey(1)
+
+        # Quit if Q is pressed
+        if k & 0xFF == ord('q'):
+            break
 
         # Refresh zones if Z is pressed
-        if cv2.waitKey(1) & 0xFF == ord('z'):
+        if k & 0xFF == ord('z'):
             # Detect zones
-            # zc = detect_zones(gray)
-            # zc = detect_zones_canny(gray)
-            zc = detect_zones_contours(gray, frame)
+            # _zc = [(150, 100), (150, 150), (150, 200)]
+            # _zc = detect_zones(gray)
+            _zc = detect_zones_canny(gray)
+            # _zc = detect_zones_contours(gray, frame)
 
             # Refresh checked zones and sound associated to them
-            zones = [(i, j, sound_samples[k % n_ss]) for k, (i, j) in enumerate(zc)]
+            zones = [(i, j, sound_samples[k % n_ss]) for k, (i, j) in enumerate(_zc)]
             n_zones = len(zones)
             found_before = [False] * n_zones
             found = [False] * n_zones
@@ -217,10 +254,6 @@ if __name__ == "__main__":
 
         # Display the resulting frame
         cv2.imshow('frame', gray)
-
-        # Quit if Q is pressed
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
     # When everything done, release the capture
     cap.release()
