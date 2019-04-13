@@ -16,6 +16,8 @@ import numpy as np
 from sklearn.cluster import MeanShift, estimate_bandwidth
 
 from src.utils import resolve_path, pretty_duration
+from src.videostream import WebcamVideoStream
+from src.playsounds import PlaySounds
 import src.cyvisord.visord as cyvo
 
 
@@ -184,6 +186,32 @@ def detect_zones_contours(img: np.ndarray) -> List[Tuple[int, int]]:
     return sorted(zone_centers, key=lambda x: -x[1])
 
 
+def chose_instrument(zones_ij: List[Tuple[int, int]], play_sound: PlaySounds):
+    """Will chose the right instrument according to the zones disposition"""
+    min_i = min_j = 1_000_000
+    max_i = max_j = 0
+    for zi, zj in zones_ij:
+        if zi < min_i:
+            min_i = zi
+        if zi > max_i:
+            max_i = zi
+        if zj < min_j:
+            min_j = zj
+        if zj > max_j:
+            max_j = zj
+    ratio = (max_j - min_j) / (max_i - min_i + 1)
+    logging.info(f"Zones x/y ratio: {ratio}")
+
+    chosen_sounds = []
+    for r, sns in SOUND_NAMES_BY_RATIOS[::-1]:
+        if ratio >= r:
+            chosen_sounds = sns
+            break
+
+    new_sounds = [sa.WaveObject.from_wave_file(os.path.join(SAMPLES_DIRECTORY, sn)) for sn in chosen_sounds]
+    play_sound.refresh_sounds(new_sounds)
+
+
 if __name__ == "__main__":
     DEBUG = DEBUG or "debug" in sys.argv
 
@@ -203,28 +231,12 @@ if __name__ == "__main__":
         cv2.moveWindow("frame4", 1100, 400)
 
     # Initialize the video capture with small dimensions (easier on computation)
-    cap = cv2.VideoCapture(0)
-    cap.set(3, 200)
-    cap.set(4, 100)
-    # cap.set(15, -8.0)
+    webcam_options = {cv2.CAP_PROP_FRAME_WIDTH: 200, cv2.CAP_PROP_FRAME_HEIGHT: 100, cv2.CAP_PROP_FPS: 60}
+    vs = WebcamVideoStream(src=0, threaded=True, options=webcam_options).start()
 
-    # Load the sound samples
-    samples_folder = resolve_path("samples")
-    sound_samples = []
-
-    flam01 = os.path.join(samples_folder, "flam-01.wav")
-    sound_samples.append(sa.WaveObject.from_wave_file(flam01))
-
-    flam01 = os.path.join(samples_folder, "ophat-05.wav")
-    sound_samples.append(sa.WaveObject.from_wave_file(flam01))
-
-    kick08 = os.path.join(samples_folder, "kick-08.wav")
-    sound_samples.append(sa.WaveObject.from_wave_file(kick08))
-
-    sdst02 = os.path.join(samples_folder, "sdst-02.wav")
-    sound_samples.append(sa.WaveObject.from_wave_file(sdst02))
-
-    n_ss = len(sound_samples)
+    # Initialize sound player
+    ps = PlaySounds([])
+    ps.start()
 
     # Initializes with 0 zones
     zones: List[Tuple[int, int, int]] = []  # for each zone, (i, j, index)
@@ -232,9 +244,15 @@ if __name__ == "__main__":
     found_before: List[bool] = []
     found: List[bool] = []
 
+    _t0 = _t1 = time.perf_counter()
+
     while True:
+        if not vs.has_new_image:
+            time.sleep(0.001)
+            continue
+
         # Capture frame-by-frame
-        ret, frame = cap.read()
+        frame = vs.read()
 
         # Our operations on the frame come here
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -255,8 +273,11 @@ if __name__ == "__main__":
             # _zc = detect_zones_canny(gray)              # canny contours
             _zc = detect_zones_contours(gray)           # refined contours
 
+            # Refresh instrument based on zones shape
+            chose_instrument(_zc, ps)
+
             # Refresh checked zones and sound associated to them
-            zones = [(i, j, sound_samples[k % n_ss]) for k, (i, j) in enumerate(_zc)]
+            zones = [(i, j, k) for k, (i, j) in enumerate(_zc)]
             n_zones = len(zones)
             found_before = [False] * n_zones
             found = [False] * n_zones
@@ -277,8 +298,7 @@ if __name__ == "__main__":
                 cyvo.draw_square_center(gray, zd[1], zd[0], 3, 1)
 
             if not found[i] and found_before[i]:
-                # logging.debug(f"Dum!")
-                zd[2].play()
+                ps.add_to_queue(zd[2])
 
             found_before[i] = found[i]
 
@@ -290,5 +310,5 @@ if __name__ == "__main__":
         cv2.imshow('frame', gray)
 
     # When everything done, release the capture
-    cap.release()
+    vs.stop()
     cv2.destroyAllWindows()
