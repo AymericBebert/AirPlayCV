@@ -76,17 +76,28 @@ cpdef void draw_cross_center(np.uint8_t[:, :] img, int x, int y, int radius):
         img[y+k, x-k] = 255
 
 
-@cython.boundscheck(False)  # turn off bounds-checking for entire function
-@cython.wraparound(False)   # turn off negative index wrapping for entire function
-@cython.cdivision(True)     # unsafe division
+# @cython.boundscheck(False)  # turn off bounds-checking for entire function
+# @cython.wraparound(False)   # turn off negative index wrapping for entire function
+# @cython.cdivision(True)     # unsafe division
+# cpdef bint is_dark_enough(np.uint8_t[:, :] img, int x, int y, int radius, int threshold):
+#     """Returns True if, in average, the square is darker than the threshold"""
+#     cdef int i, j, s
+#     for i in range(y-radius, y+radius+1):
+#         for j in range(x-radius, x+radius+1):
+#             s += img[i, j]
+#     return s / (2*radius+1)**2 < threshold
+
+
+@cython.boundscheck(False)  # turn off bounds-checking
+@cython.wraparound(False)   # turn off negative index wrapping
 cpdef bint is_dark_enough(np.uint8_t[:, :] img, int x, int y, int radius, int threshold):
-    """Returns True is, in average, the square id darker then the threshold"""
-    cdef Py_ssize_t i, j, k
-    cdef int s
+    """Returns True if the square is darker than the threshold"""
+    cdef int i, j
     for i in range(y-radius, y+radius+1):
         for j in range(x-radius, x+radius+1):
-            s += img[i, j]
-    return s / (2*radius+1)**2 < threshold
+            if img[i, j] > threshold:
+                return False
+    return True
 
 
 @cython.boundscheck(False)  # turn off bounds-checking for entire function

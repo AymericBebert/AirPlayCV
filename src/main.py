@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+"""
+Main script
+"""
+
 import os
 import sys
 import time
@@ -68,7 +72,7 @@ def detect_zones(img: np.ndarray) -> List[Tuple[int, int]]:
 
 
 def detect_zones_canny(img: np.ndarray) -> List[Tuple[int, int]]:
-    """Will detect the best black zones un the image"""
+    """Will detect the best black zones un the image, using canny filter"""
 
     min_i = img.shape[0] // 2
     max_i = img.shape[0] * 9 // 10
