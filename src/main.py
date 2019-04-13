@@ -19,10 +19,21 @@ from src.utils import resolve_path, pretty_duration
 import src.cyvisord.visord as cyvo
 
 
+# Configuration parameters
 LOG_FORMAT = "%(asctime)s [%(name)s/%(levelname)s] %(message)s"
 LOG_DATE_FMT = "%H:%M:%S"
 DARK_THRESHOLD = 92
 DEBUG = False
+
+# Directory where the path to the samples will be based on
+SAMPLES_DIRECTORY = resolve_path("samples")
+
+# The ratio width/height of the instrument will be computed, the first match above it will be used
+SOUND_NAMES_BY_RATIOS = [
+    (0.0, ["whistle_A.wav", "whistle_B.wav", "whistle_C.wav"]),
+    (0.5, ["flam-01.wav", "ophat-05.wav", "kick-08.wav", "sdst-02.wav"]),
+    (10.0, ["piano_A.wav", "piano_B.wav", "piano_C.wav"]),
+]
 
 
 def detect_zones(img: np.ndarray) -> List[Tuple[int, int]]:
@@ -55,7 +66,7 @@ def detect_zones(img: np.ndarray) -> List[Tuple[int, int]]:
 
     # For each cluster, make the zone out of the cluster center
     zone_centers = [(int(round(cc[0])), int(round(cc[1]))) for cc in ms.cluster_centers_]
-    zone_centers.sort(key=lambda x: x[1])
+    zone_centers.sort(key=lambda x: -x[1])
 
     if DEBUG:
         img2 = img.copy()
@@ -97,7 +108,7 @@ def detect_zones_canny(img: np.ndarray) -> List[Tuple[int, int]]:
 
     # For each cluster, make the zone out of the cluster center
     zone_centers = [(int(round(cc[0])), int(round(cc[1]))) for cc in ms.cluster_centers_]
-    zone_centers.sort(key=lambda x: x[1])
+    zone_centers.sort(key=lambda x: -x[1])
 
     if DEBUG:
         img2 = img.copy()
@@ -113,19 +124,31 @@ def detect_zones_canny(img: np.ndarray) -> List[Tuple[int, int]]:
     return zone_centers
 
 
-def detect_zones_contours(img: np.ndarray, img_bgr: np.ndarray) -> List[Tuple[int, int]]:
+def detect_zones_contours(img: np.ndarray) -> List[Tuple[int, int]]:
     """Use contour detection to find interesting zones"""
-    logging.debug("detect_zones_contours start")
+    global DARK_THRESHOLD
 
+    logging.debug("detect_zones_contours start")
+    start_line = img.shape[0] // 2
+
+    img_bgr = None
     if DEBUG:
-        img_bgr = cv2.flip(img_bgr, 1)
+        img_bgr = cv2.cvtColor(img[start_line:, :], cv2.COLOR_GRAY2BGR)
 
     t0 = time.perf_counter()
 
     colors = {3: (255, 0, 0), 4: (0, 255, 0), 5: (0, 0, 255), 6: (255, 255, 0), 7: (255, 0, 255), 8: (0, 255, 255)}
 
-    img2 = cv2.GaussianBlur(img, (3, 3), 0)
-    ret_, thresh = cv2.threshold(img2, 176, 255, cv2.THRESH_BINARY)
+    img2 = cv2.GaussianBlur(img[start_line:, :], (3, 3), 0)
+
+    # if DEBUG:
+    #     cv2.imshow('frame2', img2)
+    #     plt.hist(img2.ravel(), 256, [0, 256])
+    #     plt.show()
+
+    threshold = np.percentile(img2, 20) // 2  # half luminosity of 20% brighter pixel
+    logging.debug(f"Zones threshold: {threshold}")
+    ret_, thresh = cv2.threshold(img2, threshold, 255, cv2.THRESH_BINARY)
 
     contours, h = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     zone_centers = []
@@ -133,16 +156,13 @@ def detect_zones_contours(img: np.ndarray, img_bgr: np.ndarray) -> List[Tuple[in
     for cnt in contours:
         # Filter out too small or large zones
         area = cv2.contourArea(cnt)
-        if area < 64 or area > 1024:
+        if area < 48 or area > 1024:
             continue
 
         # Compute the center of the contour
         mom = cv2.moments(cnt)
         c_x = int(mom["m10"] / mom["m00"])
-        c_y = int(mom["m01"] / mom["m00"])
-
-        if c_y < img.shape[0] // 2:
-            continue
+        c_y = int(mom["m01"] / mom["m00"]) + start_line
 
         zone_centers.append((c_y, c_x))
 
@@ -160,7 +180,8 @@ def detect_zones_contours(img: np.ndarray, img_bgr: np.ndarray) -> List[Tuple[in
         cv2.imshow('frame4', img_bgr)
 
     logging.info(f"detect_zones_contours took {pretty_duration(time.perf_counter() - t0)}")
-    return zone_centers
+    DARK_THRESHOLD = threshold
+    return sorted(zone_centers, key=lambda x: -x[1])
 
 
 if __name__ == "__main__":
@@ -206,39 +227,44 @@ if __name__ == "__main__":
     n_ss = len(sound_samples)
 
     # Initializes with 0 zones
-    zones = []
-    n_zones = len(zones)
-    found_before = [False] * n_zones
-    found = [False] * n_zones
+    zones: List[Tuple[int, int, int]] = []  # for each zone, (i, j, index)
+    n_zones: int = 0
+    found_before: List[bool] = []
+    found: List[bool] = []
 
     while True:
         # Capture frame-by-frame
         ret, frame = cap.read()
 
         # Our operations on the frame come here
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # TODO read in grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # gray = cv2.flip(gray, 1)
 
         # Key input
-        k = cv2.waitKey(1)
+        k = cv2.waitKey(1) & 0xFF
 
         # Quit if Q is pressed
-        if k & 0xFF == ord('q'):
+        if k == ord('q'):
             break
 
         # Refresh zones if Z is pressed
-        if k & 0xFF == ord('z'):
+        if k == ord('z'):
             # Detect zones
-            # _zc = [(150, 100), (150, 150), (150, 200)]
-            # _zc = detect_zones(gray)
-            _zc = detect_zones_canny(gray)
-            # _zc = detect_zones_contours(gray, frame)
+            # _zc = [(150, 100), (150, 150), (150, 200)]  # hardcoded
+            # _zc = detect_zones(gray)                    # black zones
+            # _zc = detect_zones_canny(gray)              # canny contours
+            _zc = detect_zones_contours(gray)           # refined contours
 
             # Refresh checked zones and sound associated to them
             zones = [(i, j, sound_samples[k % n_ss]) for k, (i, j) in enumerate(_zc)]
             n_zones = len(zones)
             found_before = [False] * n_zones
             found = [False] * n_zones
+
+        if DEBUG:
+            _t00 = time.perf_counter()
+            logging.debug(f"Last check is {pretty_duration(_t00 - _t0)} old ({1/(_t00 - _t0):.2f} fps)")
+            _t0 = _t00
 
         # For each zones, check if it is below or above the darkness threshold
         for i in range(n_zones):
@@ -255,6 +281,10 @@ if __name__ == "__main__":
                 zd[2].play()
 
             found_before[i] = found[i]
+
+        if DEBUG:
+            _t1 = time.perf_counter()
+            logging.debug(f"Square check done in {pretty_duration(_t1 - _t0)}")
 
         # Display the resulting frame
         cv2.imshow('frame', gray)
